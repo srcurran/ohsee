@@ -64,9 +64,15 @@ function percentBar(pct: number): string {
 
 const COL_LABEL = 'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
 
-function renderScreenshotSection(vr: ViewportResult, url1: string, url2: string): string {
+function renderScreenshotSection(
+  vr: ViewportResult,
+  url1: string,
+  url2: string,
+  imagePaths: Record<string, string>,
+): string {
   const label1 = escapeHtml(urlLabel(url1));
   const label2 = escapeHtml(urlLabel(url2));
+  const vp = vr.viewport;
 
   if (vr.pixelAnalysis) {
     const pa = vr.pixelAnalysis;
@@ -81,19 +87,19 @@ function renderScreenshotSection(vr: ViewportResult, url1: string, url2: string)
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;align-items:start;">
         <div>
           <p style="${COL_LABEL}" title="${escapeHtml(url1)}">${label1}</p>
-          <img src="data:image/png;base64,${vr.beforeScreenshot.imageBase64}"
+          <img src="${imagePaths[`before-${vp}`]}"
                alt="Screenshot of ${label1}"
                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
         <div>
           <p style="${COL_LABEL}">Pixel diff <span style="color:${color};font-size:13px;font-weight:700;">${pct}% changed</span></p>
-          <img src="data:image/png;base64,${pa.diffImageBase64}"
-               alt="Pixel diff at ${vr.viewport}"
+          <img src="${imagePaths[`diff-${vp}`]}"
+               alt="Pixel diff at ${vp}"
                style="width:100%;border:2px solid ${color}40;border-radius:8px;display:block;" />
         </div>
         <div>
           <p style="${COL_LABEL}" title="${escapeHtml(url2)}">${label2}</p>
-          <img src="data:image/png;base64,${vr.afterScreenshot.imageBase64}"
+          <img src="${imagePaths[`after-${vp}`]}"
                alt="Screenshot of ${label2}"
                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
@@ -124,13 +130,13 @@ function renderScreenshotSection(vr: ViewportResult, url1: string, url2: string)
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
         <div>
           <p style="${COL_LABEL}" title="${escapeHtml(url1)}">${label1}</p>
-          <img src="data:image/png;base64,${vr.beforeScreenshot.imageBase64}"
+          <img src="${imagePaths[`before-${vp}`]}"
                alt="Screenshot of ${label1}"
                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
         <div>
           <p style="${COL_LABEL}" title="${escapeHtml(url2)}">${label2}</p>
-          <img src="data:image/png;base64,${vr.afterScreenshot.imageBase64}"
+          <img src="${imagePaths[`after-${vp}`]}"
                alt="Screenshot of ${label2}"
                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
@@ -151,7 +157,7 @@ function renderScreenshotSection(vr: ViewportResult, url1: string, url2: string)
   return '';
 }
 
-function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2: string): string {
+function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2: string, imagePaths: Record<string, string>): string {
   const { viewport, structuralAnalysis: sa } = vr;
   const display = idx === 0 ? 'block' : 'none';
 
@@ -172,7 +178,7 @@ function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2
 
   return `
   <div id="panel-${viewport}" style="display:${display};">
-    ${renderScreenshotSection(vr, url1, url2)}
+    ${renderScreenshotSection(vr, url1, url2, imagePaths)}
 
     <div style="margin-bottom:20px;">
       <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Structural Diff</h3>
@@ -213,7 +219,7 @@ function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2
   </div>`;
 }
 
-export function renderReport(report: CompareReport): string {
+export function renderReport(report: CompareReport, imagePaths: Record<string, string>): string {
   const tabs = report.viewports.map((vr, i) => {
     const dot = vr.hasChanges
       ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:6px;vertical-align:middle;"></span>`
@@ -227,7 +233,7 @@ export function renderReport(report: CompareReport): string {
   }).join('\n');
 
   const panels = report.viewports
-    .map((vr, i) => renderViewportPanel(vr, i, report.url1, report.url2))
+    .map((vr, i) => renderViewportPanel(vr, i, report.url1, report.url2, imagePaths))
     .join('\n');
 
   const ts = new Date(report.createdAt).toLocaleString();

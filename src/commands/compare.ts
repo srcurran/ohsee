@@ -6,7 +6,7 @@ import { analyzeVisual, generateSummary } from '../analyze/visual.js';
 import { runPixelAnalysis } from '../analyze/pixel.js';
 import { buildReport } from '../report/builder.js';
 import { renderReport } from '../report/render.js';
-import { resolveOutputDir, writeReport, openInBrowser } from '../utils/fs.js';
+import { resolveOutputDir, writeImages, writeReport, openInBrowser } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 
 const VERSION = '0.1.0';
@@ -129,8 +129,9 @@ export async function runCompare(
     aiMode: !options.noAi,
   });
 
-  const html = renderReport(report);
   const outputDir = options.output ?? resolveOutputDir(url1);
+  const imagePaths = writeImages(report, outputDir);
+  const html = renderReport(report, imagePaths);
   const reportPath = writeReport(html, outputDir);
   spinner.succeed(`Report written to ${reportPath}`);
 
