@@ -53,6 +53,17 @@ export interface VisualAnalysis {
   outputTokens: number;
 }
 
+export interface PixelAnalysis {
+  viewport: ViewportName;
+  diffImageBase64: string; // base64 PNG with changed pixels highlighted
+  totalPixels: number;
+  changedPixels: number;
+  percentChanged: number;
+  beforeWidth: number;
+  beforeHeight: number;
+  afterHeight: number; // full-page heights can differ
+}
+
 export interface StructuralAnalysis {
   viewport: ViewportName;
   htmlDiffSummary: string;
@@ -69,7 +80,8 @@ export interface ViewportResult {
   viewport: ViewportName;
   beforeScreenshot: CapturedScreenshot;
   afterScreenshot: CapturedScreenshot;
-  visualAnalysis: VisualAnalysis;
+  visualAnalysis?: VisualAnalysis;  // undefined in --no-ai mode
+  pixelAnalysis?: PixelAnalysis;    // defined in --no-ai mode
   structuralAnalysis: StructuralAnalysis;
   hasChanges: boolean;
 }
@@ -86,6 +98,7 @@ export interface CompareReport {
   durationMs: number;
   ohseeVersion: string;
   modelUsed: string;
+  aiMode: boolean; // false when --no-ai
 }
 
 export interface CompareOptions {
@@ -95,6 +108,7 @@ export interface CompareOptions {
   model: string;
   debug: boolean;
   open: boolean;
+  noAi: boolean;
 }
 
 export type ProgressCallback = (step: string, detail?: string) => void;

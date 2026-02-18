@@ -1,14 +1,47 @@
 import ora from 'ora';
-import { CompareOptions, ViewportName, ProgressCallback } from '../types/index.js';
+import { CompareOptions, ViewportName } from '../types/index.js';
 import { captureScreenshots, VIEWPORTS } from '../capture/screenshot.js';
 import { extractStructural } from '../capture/extract.js';
 import { analyzeVisual, generateSummary } from '../analyze/visual.js';
+import { runPixelAnalysis } from '../analyze/pixel.js';
 import { buildReport } from '../report/builder.js';
 import { renderReport } from '../report/render.js';
 import { resolveOutputDir, writeReport, openInBrowser } from '../utils/fs.js';
 import { logger } from '../utils/logger.js';
 
 const VERSION = '0.1.0';
+
+function buildNoAiSummary(
+  viewportNames: ViewportName[],
+  pixelResults: ReturnType<typeof runPixelAnalysis>,
+  structuralChanges: number,
+): string {
+  const affected = pixelResults.filter((p) => p.changedPixels > 0).length;
+  const avgPct = (
+    pixelResults.reduce((s, p) => s + p.percentChanged, 0) / pixelResults.length
+  ).toFixed(1);
+  const mostChanged = pixelResults.reduce((a, b) =>
+    a.percentChanged > b.percentChanged ? a : b,
+  );
+
+  if (affected === 0 && structuralChanges === 0) {
+    return 'No visual or structural differences detected between the two URLs across all viewports.';
+  }
+
+  const parts: string[] = [];
+  if (affected > 0) {
+    parts.push(
+      `Pixel diffing detected changes in ${affected} of ${viewportNames.length} viewport(s), averaging ${avgPct}% pixels changed.`,
+    );
+    parts.push(
+      `The most affected viewport is ${mostChanged.viewport} at ${mostChanged.percentChanged.toFixed(1)}%.`,
+    );
+  }
+  if (structuralChanges > 0) {
+    parts.push(`The HTML/CSS diff found ${structuralChanges} changed lines across all viewports.`);
+  }
+  return parts.join(' ');
+}
 
 export async function runCompare(
   url1: string,
@@ -21,10 +54,6 @@ export async function runCompare(
     options.viewports ?? (VIEWPORTS.map((v) => v.name) as ViewportName[]);
 
   const spinner = ora({ color: 'cyan' });
-
-  const progress: ProgressCallback = (step, detail) => {
-    spinner.text = detail ? `${step} — ${detail}` : step;
-  };
 
   // ── 1. Capture screenshots ──────────────────────────────────────────────
   spinner.start('Capturing screenshots for URL 1…');
@@ -44,23 +73,44 @@ export async function runCompare(
   const afterSnapshots = await extractStructural(url2, viewportNames, options.wait);
   spinner.succeed('Extracted structural snapshots for URL 2');
 
-  // ── 3. Visual analysis (parallel across viewports) ──────────────────────
-  spinner.start(`Sending ${viewportNames.length} viewport pairs to Claude vision…`);
-  const visualAnalyses = await analyzeVisual(
-    beforeScreenshots,
-    afterScreenshots,
-    viewportNames,
-    options.model,
-    options.debug,
-  );
-  spinner.succeed('Visual analysis complete');
+  let overallSummary: string;
+  let visualAnalyses;
+  let pixelAnalyses;
 
-  // ── 4. Overall summary ──────────────────────────────────────────────────
-  spinner.start('Generating executive summary…');
-  const overallSummary = await generateSummary(visualAnalyses, options.model, options.debug);
-  spinner.succeed('Summary generated');
+  if (options.noAi) {
+    // ── 3a. Pixel diff (no API) ─────────────────────────────────────────
+    spinner.start('Running pixel diff…');
+    pixelAnalyses = runPixelAnalysis(beforeScreenshots, afterScreenshots, viewportNames);
+    spinner.succeed('Pixel diff complete');
 
-  // ── 5. Build report data ─────────────────────────────────────────────────
+    // Compute structural changes for summary
+    const { analyzeStructural } = await import('../analyze/structural.js');
+    const totalStructural = viewportNames.reduce((sum, vp) => {
+      const b = beforeSnapshots.find((s) => s.viewport === vp)!;
+      const a = afterSnapshots.find((s) => s.viewport === vp)!;
+      const r = analyzeStructural(b, a, vp);
+      return sum + r.htmlChangedLines + r.cssChangedLines;
+    }, 0);
+
+    overallSummary = buildNoAiSummary(viewportNames, pixelAnalyses, totalStructural);
+  } else {
+    // ── 3b. Claude visual analysis ──────────────────────────────────────
+    spinner.start(`Sending ${viewportNames.length} viewport pairs to Claude vision…`);
+    visualAnalyses = await analyzeVisual(
+      beforeScreenshots,
+      afterScreenshots,
+      viewportNames,
+      options.model,
+      options.debug,
+    );
+    spinner.succeed('Visual analysis complete');
+
+    spinner.start('Generating executive summary…');
+    overallSummary = await generateSummary(visualAnalyses, options.model, options.debug);
+    spinner.succeed('Summary generated');
+  }
+
+  // ── 4. Build + render report ────────────────────────────────────────────
   spinner.start('Building report…');
   const report = buildReport({
     url1,
@@ -71,24 +121,29 @@ export async function runCompare(
     beforeSnapshots,
     afterSnapshots,
     visualAnalyses,
+    pixelAnalyses,
     overallSummary,
     startedAt,
-    model: options.model,
+    model: options.noAi ? 'none' : options.model,
     version: VERSION,
+    aiMode: !options.noAi,
   });
 
-  // ── 6. Render + write HTML ───────────────────────────────────────────────
   const html = renderReport(report);
   const outputDir = options.output ?? resolveOutputDir(url1);
   const reportPath = writeReport(html, outputDir);
   spinner.succeed(`Report written to ${reportPath}`);
 
-  // ── 7. Summary to console ────────────────────────────────────────────────
-  logger.info(`Visual changes: ${report.totalVisualChanges}`);
+  // ── 5. Console summary ──────────────────────────────────────────────────
+  if (options.noAi) {
+    logger.info(`Changed pixels (total): ${report.totalVisualChanges.toLocaleString()}`);
+  } else {
+    logger.info(`Visual changes: ${report.totalVisualChanges}`);
+  }
   logger.info(`Structural changed lines: ${report.totalStructuralChanges}`);
   logger.info(`Duration: ${(report.durationMs / 1000).toFixed(1)}s`);
 
-  // ── 8. Auto-open ─────────────────────────────────────────────────────────
+  // ── 6. Auto-open ────────────────────────────────────────────────────────
   if (options.open !== false) {
     openInBrowser(reportPath);
   }

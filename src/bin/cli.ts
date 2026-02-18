@@ -24,13 +24,18 @@ program
   )
   .option('--wait <ms>', 'Extra wait time after networkidle (ms)', '0')
   .option('--model <model-id>', 'Claude model to use', DEFAULT_MODEL)
+  .option('--no-ai', 'Skip Claude API — use pixel diff + structural diff only (no API key needed)')
   .option('--debug', 'Log raw Claude responses to stderr', false)
   .option('--no-open', 'Skip auto-opening report in browser')
   .action(async (url1: string, url2: string, opts: Record<string, string | boolean>) => {
-    // Validate API key
-    if (!process.env.ANTHROPIC_API_KEY) {
+    // Commander turns --no-ai into opts.ai === false
+    const noAi = opts.ai === false;
+
+    // Validate API key only if AI mode is active
+    if (!noAi && !process.env.ANTHROPIC_API_KEY) {
       logger.error('ANTHROPIC_API_KEY environment variable is not set.');
       logger.dim('  export ANTHROPIC_API_KEY=your-key');
+      logger.dim('  Or run with --no-ai to skip Claude analysis entirely.');
       process.exit(1);
     }
 
@@ -61,13 +66,14 @@ program
       model: (opts.model as string) ?? DEFAULT_MODEL,
       debug: Boolean(opts.debug),
       open: opts.open !== false,
+      noAi,
     };
 
-    logger.step(`Comparing:`);
+    logger.step('Comparing:');
     logger.dim(`  URL 1: ${url1}`);
     logger.dim(`  URL 2: ${url2}`);
     logger.dim(`  Viewports: ${requestedViewports.join(', ')}`);
-    logger.dim(`  Model: ${options.model}`);
+    logger.dim(`  Mode: ${noAi ? 'pixel diff (no AI)' : `Claude · ${options.model}`}`);
     console.log();
 
     try {

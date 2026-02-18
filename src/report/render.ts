@@ -15,32 +15,18 @@ function severityColor(s: ChangeSeverity): string {
 
 function changeTypeBg(t: ChangeType): string {
   const map: Record<ChangeType, string> = {
-    layout: '#dbeafe',
-    typography: '#f3e8ff',
-    color: '#fce7f3',
-    spacing: '#dcfce7',
-    visibility: '#fef9c3',
-    content: '#ffedd5',
-    image: '#e0f2fe',
-    'new-element': '#d1fae5',
-    'removed-element': '#fee2e2',
-    other: '#f1f5f9',
+    layout: '#dbeafe', typography: '#f3e8ff', color: '#fce7f3',
+    spacing: '#dcfce7', visibility: '#fef9c3', content: '#ffedd5',
+    image: '#e0f2fe', 'new-element': '#d1fae5', 'removed-element': '#fee2e2', other: '#f1f5f9',
   };
   return map[t] ?? '#f1f5f9';
 }
 
 function changeTypeFg(t: ChangeType): string {
   const map: Record<ChangeType, string> = {
-    layout: '#1d4ed8',
-    typography: '#7c3aed',
-    color: '#be185d',
-    spacing: '#15803d',
-    visibility: '#854d0e',
-    content: '#9a3412',
-    image: '#0369a1',
-    'new-element': '#065f46',
-    'removed-element': '#991b1b',
-    other: '#475569',
+    layout: '#1d4ed8', typography: '#7c3aed', color: '#be185d',
+    spacing: '#15803d', visibility: '#854d0e', content: '#9a3412',
+    image: '#0369a1', 'new-element': '#065f46', 'removed-element': '#991b1b', other: '#475569',
   };
   return map[t] ?? '#475569';
 }
@@ -57,14 +43,70 @@ function renderChange(c: VisualChange): string {
     </div>`;
 }
 
-function renderViewportPanel(vr: ViewportResult, idx: number): string {
-  const { viewport, beforeScreenshot, afterScreenshot, visualAnalysis, structuralAnalysis } = vr;
-  const display = idx === 0 ? 'block' : 'none';
+function percentBar(pct: number): string {
+  const color = pct > 20 ? '#dc2626' : pct > 5 ? '#d97706' : '#16a34a';
+  const width = Math.min(100, pct).toFixed(1);
+  return `
+    <div style="background:#f1f5f9;border-radius:99px;height:8px;margin-top:6px;overflow:hidden;">
+      <div style="background:${color};height:100%;width:${width}%;border-radius:99px;transition:width 0.3s;"></div>
+    </div>`;
+}
 
-  const changesHtml =
-    visualAnalysis.changes.length === 0
+function renderVisualSection(vr: ViewportResult): string {
+  if (vr.pixelAnalysis) {
+    const pa = vr.pixelAnalysis;
+    const pct = pa.percentChanged.toFixed(2);
+    const color = pa.percentChanged > 20 ? '#dc2626' : pa.percentChanged > 5 ? '#d97706' : '#16a34a';
+    const heightNote = pa.beforeHeight !== pa.afterHeight
+      ? `<p style="font-size:12px;color:#94a3b8;margin:8px 0 0;font-style:italic;">Page heights differ: before ${pa.beforeHeight}px, after ${pa.afterHeight}px. Shorter page padded with white for comparison.</p>`
+      : '';
+    return `
+      <div style="margin-bottom:24px;">
+        <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Pixel Diff</h3>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+          <div style="background:#f1f5f9;border-radius:8px;padding:10px 20px;text-align:center;min-width:140px;">
+            <p style="font-size:28px;font-weight:700;color:${color};margin:0;">${pct}%</p>
+            <p style="font-size:12px;color:#64748b;margin:2px 0 0;">pixels changed</p>
+            ${percentBar(pa.percentChanged)}
+          </div>
+          <div style="background:#f1f5f9;border-radius:8px;padding:10px 20px;text-align:center;min-width:140px;">
+            <p style="font-size:24px;font-weight:700;color:#0f172a;margin:0;">${pa.changedPixels.toLocaleString()}</p>
+            <p style="font-size:12px;color:#64748b;margin:2px 0 0;">of ${pa.totalPixels.toLocaleString()} total</p>
+          </div>
+        </div>
+        ${heightNote}
+        <p style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 8px;">Diff image (red = changed, blue = added content)</p>
+        <img src="data:image/png;base64,${pa.diffImageBase64}"
+             alt="Pixel diff at ${vr.viewport}"
+             style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
+      </div>`;
+  }
+
+  if (vr.visualAnalysis) {
+    const va = vr.visualAnalysis;
+    const changesHtml = va.changes.length === 0
       ? `<p style="color:#64748b;font-style:italic;margin:0;">No visual changes detected at this viewport.</p>`
-      : visualAnalysis.changes.map(renderChange).join('');
+      : va.changes.map(renderChange).join('');
+    return `
+      <div style="margin-bottom:24px;">
+        <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">
+          Visual Changes
+          <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:8px;">(${va.changes.length} found · ${va.promptTokens + va.outputTokens} tokens)</span>
+        </h3>
+        ${changesHtml}
+        ${va.confidenceNote ? `<p style="font-size:12px;color:#94a3b8;margin:8px 0 0;font-style:italic;">${escapeHtml(va.confidenceNote)}</p>` : ''}
+      </div>
+      <div style="background:#f8fafc;border-left:4px solid #6366f1;border-radius:0 8px 8px 0;padding:14px 16px;margin-bottom:24px;">
+        <p style="margin:0;font-size:14px;color:#334155;line-height:1.6;">${escapeHtml(va.summary)}</p>
+      </div>`;
+  }
+
+  return '';
+}
+
+function renderViewportPanel(vr: ViewportResult, idx: number): string {
+  const { viewport, beforeScreenshot, afterScreenshot, structuralAnalysis } = vr;
+  const display = idx === 0 ? 'block' : 'none';
 
   const addedSel = structuralAnalysis.addedSelectors
     .map((s) => `<code style="font-size:12px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
@@ -74,22 +116,19 @@ function renderViewportPanel(vr: ViewportResult, idx: number): string {
     .map((s) => `<code style="font-size:12px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
     .join(' ');
 
-  const additionalHtml =
-    structuralAnalysis.additionalFindings.length === 0
-      ? ''
-      : `
-      <div style="margin-top:20px;">
-        <h4 style="font-size:14px;font-weight:600;color:#334155;margin:0 0 8px;">DOM Changes Not Visible in Screenshots</h4>
-        <ul style="margin:0;padding-left:20px;color:#64748b;font-size:13px;line-height:1.7;">
-          ${structuralAnalysis.additionalFindings.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
-        </ul>
-      </div>`;
+  const additionalHtml = structuralAnalysis.additionalFindings.length === 0 ? '' : `
+    <div style="margin-top:20px;">
+      <h4 style="font-size:14px;font-weight:600;color:#334155;margin:0 0 8px;">DOM Changes Not Visible in Screenshots</h4>
+      <ul style="margin:0;padding-left:20px;color:#64748b;font-size:13px;line-height:1.7;">
+        ${structuralAnalysis.additionalFindings.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
+      </ul>
+    </div>`;
 
-  const diffHtml = escapeHtml(structuralAnalysis.rawHtmlDiff).slice(0, 50000); // cap for huge pages
+  const diffHtml = escapeHtml(structuralAnalysis.rawHtmlDiff).slice(0, 50000);
 
   return `
   <div id="panel-${viewport}" style="display:${display};">
-    <!-- Screenshots -->
+    <!-- Screenshots side by side -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
       <div>
         <p style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Before (URL 1)</p>
@@ -105,22 +144,9 @@ function renderViewportPanel(vr: ViewportResult, idx: number): string {
       </div>
     </div>
 
-    <!-- Visual changes -->
-    <div style="margin-bottom:24px;">
-      <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">
-        Visual Changes
-        <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:8px;">(${visualAnalysis.changes.length} found · ${visualAnalysis.promptTokens + visualAnalysis.outputTokens} tokens)</span>
-      </h3>
-      ${changesHtml}
-      ${visualAnalysis.confidenceNote ? `<p style="font-size:12px;color:#94a3b8;margin:8px 0 0;font-style:italic;">${escapeHtml(visualAnalysis.confidenceNote)}</p>` : ''}
-    </div>
+    ${renderVisualSection(vr)}
 
-    <!-- Viewport summary -->
-    <div style="background:#f8fafc;border-left:4px solid #6366f1;border-radius:0 8px 8px 0;padding:14px 16px;margin-bottom:24px;">
-      <p style="margin:0;font-size:14px;color:#334155;line-height:1.6;">${escapeHtml(visualAnalysis.summary)}</p>
-    </div>
-
-    <!-- Structural stats -->
+    <!-- Structural diff -->
     <div style="margin-bottom:20px;">
       <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Structural Diff</h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
@@ -174,9 +200,14 @@ export function renderReport(report: CompareReport): string {
   }).join('\n');
 
   const panels = report.viewports.map((vr, i) => renderViewportPanel(vr, i)).join('\n');
-
   const ts = new Date(report.createdAt).toLocaleString();
   const duration = (report.durationMs / 1000).toFixed(1);
+
+  const modeBadge = report.aiMode
+    ? `<span style="background:#e0e7ff;color:#4338ca;font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;">AI analysis</span>`
+    : `<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;">pixel diff · no AI</span>`;
+
+  const summaryLabel = report.aiMode ? 'visual changes' : 'changed pixels';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -200,6 +231,7 @@ export function renderReport(report: CompareReport): string {
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
         <span style="font-size:28px;font-weight:800;color:#6366f1;letter-spacing:-1px;">ohsee</span>
         <span style="background:#f1f5f9;color:#475569;font-size:12px;padding:3px 10px;border-radius:99px;">v${escapeHtml(report.ohseeVersion)}</span>
+        ${modeBadge}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
         <div>
@@ -214,19 +246,19 @@ export function renderReport(report: CompareReport): string {
       <div style="display:flex;gap:16px;flex-wrap:wrap;color:#64748b;font-size:13px;">
         <span>📅 ${escapeHtml(ts)}</span>
         <span>⏱ ${escapeHtml(duration)}s</span>
-        <span>🤖 ${escapeHtml(report.modelUsed)}</span>
+        ${report.aiMode ? `<span>🤖 ${escapeHtml(report.modelUsed)}</span>` : ''}
         <span>🆔 ${escapeHtml(report.id)}</span>
       </div>
     </div>
 
     <!-- Executive Summary -->
     <div style="background:#6366f1;border-radius:12px;padding:24px;margin-bottom:24px;color:#fff;">
-      <h2 style="font-size:18px;font-weight:700;margin:0 0 12px;">Executive Summary</h2>
+      <h2 style="font-size:18px;font-weight:700;margin:0 0 12px;">Summary</h2>
       <p style="margin:0 0 16px;line-height:1.6;opacity:0.95;">${escapeHtml(report.overallSummary)}</p>
       <div style="display:flex;gap:24px;flex-wrap:wrap;">
         <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 20px;text-align:center;">
-          <p style="font-size:28px;font-weight:800;margin:0;">${report.totalVisualChanges}</p>
-          <p style="font-size:12px;opacity:0.8;margin:2px 0 0;">visual changes</p>
+          <p style="font-size:28px;font-weight:800;margin:0;">${report.totalVisualChanges.toLocaleString()}</p>
+          <p style="font-size:12px;opacity:0.8;margin:2px 0 0;">${summaryLabel}</p>
         </div>
         <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 20px;text-align:center;">
           <p style="font-size:28px;font-weight:800;margin:0;">${report.totalStructuralChanges}</p>
@@ -249,7 +281,8 @@ export function renderReport(report: CompareReport): string {
 
     <!-- Footer -->
     <div style="text-align:center;padding:20px;color:#94a3b8;font-size:12px;">
-      Generated by <strong>ohsee</strong> v${escapeHtml(report.ohseeVersion)} · Model: ${escapeHtml(report.modelUsed)}
+      Generated by <strong>ohsee</strong> v${escapeHtml(report.ohseeVersion)}
+      ${report.aiMode ? ` · Model: ${escapeHtml(report.modelUsed)}` : ' · pixel diff mode'}
     </div>
 
   </div>
