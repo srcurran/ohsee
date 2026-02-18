@@ -9,6 +9,17 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Short display label for a URL: hostname + path (no scheme, no query) */
+function urlLabel(url: string, maxLen = 45): string {
+  try {
+    const p = new URL(url);
+    const label = p.hostname + (p.pathname === '/' ? '' : p.pathname);
+    return label.length > maxLen ? label.slice(0, maxLen - 1) + '…' : label;
+  } catch {
+    return url.slice(0, maxLen);
+  }
+}
+
 function severityColor(s: ChangeSeverity): string {
   return s === 'high' ? '#dc2626' : s === 'medium' ? '#d97706' : '#16a34a';
 }
@@ -46,40 +57,62 @@ function renderChange(c: VisualChange): string {
 function percentBar(pct: number): string {
   const color = pct > 20 ? '#dc2626' : pct > 5 ? '#d97706' : '#16a34a';
   const width = Math.min(100, pct).toFixed(1);
-  return `
-    <div style="background:#f1f5f9;border-radius:99px;height:8px;margin-top:6px;overflow:hidden;">
-      <div style="background:${color};height:100%;width:${width}%;border-radius:99px;transition:width 0.3s;"></div>
-    </div>`;
+  return `<div style="background:#e2e8f0;border-radius:99px;height:6px;margin-top:6px;overflow:hidden;">
+    <div style="background:${color};height:100%;width:${width}%;border-radius:99px;"></div>
+  </div>`;
 }
 
-function renderVisualSection(vr: ViewportResult): string {
+const COL_LABEL = 'font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+
+function renderScreenshotSection(vr: ViewportResult, url1: string, url2: string): string {
+  const label1 = escapeHtml(urlLabel(url1));
+  const label2 = escapeHtml(urlLabel(url2));
+
   if (vr.pixelAnalysis) {
     const pa = vr.pixelAnalysis;
     const pct = pa.percentChanged.toFixed(2);
     const color = pa.percentChanged > 20 ? '#dc2626' : pa.percentChanged > 5 ? '#d97706' : '#16a34a';
     const heightNote = pa.beforeHeight !== pa.afterHeight
-      ? `<p style="font-size:12px;color:#94a3b8;margin:8px 0 0;font-style:italic;">Page heights differ: before ${pa.beforeHeight}px, after ${pa.afterHeight}px. Shorter page padded with white for comparison.</p>`
+      ? `<p style="font-size:12px;color:#94a3b8;margin:10px 0 0;font-style:italic;text-align:center;">Page heights differ: ${pa.beforeHeight}px vs ${pa.afterHeight}px — shorter page padded for comparison.</p>`
       : '';
+
     return `
-      <div style="margin-bottom:24px;">
-        <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Pixel Diff</h3>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
-          <div style="background:#f1f5f9;border-radius:8px;padding:10px 20px;text-align:center;min-width:140px;">
-            <p style="font-size:28px;font-weight:700;color:${color};margin:0;">${pct}%</p>
-            <p style="font-size:12px;color:#64748b;margin:2px 0 0;">pixels changed</p>
-            ${percentBar(pa.percentChanged)}
-          </div>
-          <div style="background:#f1f5f9;border-radius:8px;padding:10px 20px;text-align:center;min-width:140px;">
-            <p style="font-size:24px;font-weight:700;color:#0f172a;margin:0;">${pa.changedPixels.toLocaleString()}</p>
-            <p style="font-size:12px;color:#64748b;margin:2px 0 0;">of ${pa.totalPixels.toLocaleString()} total</p>
-          </div>
+      <!-- Three-column: URL1 | Diff | URL2 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;align-items:start;">
+        <div>
+          <p style="${COL_LABEL}" title="${escapeHtml(url1)}">${label1}</p>
+          <img src="data:image/png;base64,${vr.beforeScreenshot.imageBase64}"
+               alt="Screenshot of ${label1}"
+               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
-        ${heightNote}
-        <p style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:12px 0 8px;">Diff image (red = changed, blue = added content)</p>
-        <img src="data:image/png;base64,${pa.diffImageBase64}"
-             alt="Pixel diff at ${vr.viewport}"
-             style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
-      </div>`;
+        <div>
+          <p style="${COL_LABEL}">Pixel diff <span style="color:${color};font-size:13px;font-weight:700;">${pct}% changed</span></p>
+          <img src="data:image/png;base64,${pa.diffImageBase64}"
+               alt="Pixel diff at ${vr.viewport}"
+               style="width:100%;border:2px solid ${color}40;border-radius:8px;display:block;" />
+        </div>
+        <div>
+          <p style="${COL_LABEL}" title="${escapeHtml(url2)}">${label2}</p>
+          <img src="data:image/png;base64,${vr.afterScreenshot.imageBase64}"
+               alt="Screenshot of ${label2}"
+               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
+        </div>
+      </div>
+
+      <!-- Pixel stats row -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;align-items:center;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;min-width:140px;">
+          <p style="font-size:22px;font-weight:700;color:${color};margin:0;">${pct}%</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">pixels changed</p>
+          ${percentBar(pa.percentChanged)}
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;min-width:140px;">
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${pa.changedPixels.toLocaleString()}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">of ${pa.totalPixels.toLocaleString()} total</p>
+        </div>
+        <p style="font-size:12px;color:#94a3b8;margin:0;font-style:italic;">Hot pink = changed pixels. Alignment-aware: layout shifts are compensated per section so only genuine changes are shown.</p>
+      </div>
+      ${heightNote}`;
   }
 
   if (vr.visualAnalysis) {
@@ -88,6 +121,20 @@ function renderVisualSection(vr: ViewportResult): string {
       ? `<p style="color:#64748b;font-style:italic;margin:0;">No visual changes detected at this viewport.</p>`
       : va.changes.map(renderChange).join('');
     return `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
+        <div>
+          <p style="${COL_LABEL}" title="${escapeHtml(url1)}">${label1}</p>
+          <img src="data:image/png;base64,${vr.beforeScreenshot.imageBase64}"
+               alt="Screenshot of ${label1}"
+               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
+        </div>
+        <div>
+          <p style="${COL_LABEL}" title="${escapeHtml(url2)}">${label2}</p>
+          <img src="data:image/png;base64,${vr.afterScreenshot.imageBase64}"
+               alt="Screenshot of ${label2}"
+               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
+        </div>
+      </div>
       <div style="margin-bottom:24px;">
         <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">
           Visual Changes
@@ -104,79 +151,59 @@ function renderVisualSection(vr: ViewportResult): string {
   return '';
 }
 
-function renderViewportPanel(vr: ViewportResult, idx: number): string {
-  const { viewport, beforeScreenshot, afterScreenshot, structuralAnalysis } = vr;
+function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2: string): string {
+  const { viewport, structuralAnalysis: sa } = vr;
   const display = idx === 0 ? 'block' : 'none';
 
-  const addedSel = structuralAnalysis.addedSelectors
+  const addedSel = sa.addedSelectors
     .map((s) => `<code style="font-size:12px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
     .join(' ');
-
-  const removedSel = structuralAnalysis.removedSelectors
+  const removedSel = sa.removedSelectors
     .map((s) => `<code style="font-size:12px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
     .join(' ');
-
-  const additionalHtml = structuralAnalysis.additionalFindings.length === 0 ? '' : `
+  const additionalHtml = sa.additionalFindings.length === 0 ? '' : `
     <div style="margin-top:20px;">
       <h4 style="font-size:14px;font-weight:600;color:#334155;margin:0 0 8px;">DOM Changes Not Visible in Screenshots</h4>
       <ul style="margin:0;padding-left:20px;color:#64748b;font-size:13px;line-height:1.7;">
-        ${structuralAnalysis.additionalFindings.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
+        ${sa.additionalFindings.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
       </ul>
     </div>`;
-
-  const diffHtml = escapeHtml(structuralAnalysis.rawHtmlDiff).slice(0, 50000);
+  const diffHtml = escapeHtml(sa.rawHtmlDiff).slice(0, 50000);
 
   return `
   <div id="panel-${viewport}" style="display:${display};">
-    <!-- Screenshots side by side -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
-      <div>
-        <p style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">Before (URL 1)</p>
-        <img src="data:image/png;base64,${beforeScreenshot.imageBase64}"
-             alt="Before screenshot at ${viewport}"
-             style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
-      </div>
-      <div>
-        <p style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 8px;">After (URL 2)</p>
-        <img src="data:image/png;base64,${afterScreenshot.imageBase64}"
-             alt="After screenshot at ${viewport}"
-             style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
-      </div>
-    </div>
+    ${renderScreenshotSection(vr, url1, url2)}
 
-    ${renderVisualSection(vr)}
-
-    <!-- Structural diff -->
     <div style="margin-bottom:20px;">
       <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Structural Diff</h3>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:120px;">
-          <p style="font-size:24px;font-weight:700;color:#0f172a;margin:0;">${structuralAnalysis.htmlChangedLines}</p>
-          <p style="font-size:12px;color:#64748b;margin:2px 0 0;">HTML changed lines</p>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.htmlChangedLines}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">HTML changed lines</p>
         </div>
-        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:120px;">
-          <p style="font-size:24px;font-weight:700;color:#0f172a;margin:0;">${structuralAnalysis.cssChangedLines}</p>
-          <p style="font-size:12px;color:#64748b;margin:2px 0 0;">CSS changed lines</p>
+        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.cssChangedLines}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">CSS changed lines</p>
         </div>
-        <div style="background:#d1fae5;border-radius:8px;padding:10px 16px;text-align:center;min-width:120px;">
-          <p style="font-size:24px;font-weight:700;color:#065f46;margin:0;">+${structuralAnalysis.addedSelectors.length}</p>
-          <p style="font-size:12px;color:#065f46;margin:2px 0 0;">new selectors</p>
+        <div style="background:#d1fae5;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#065f46;margin:0;">+${sa.addedSelectors.length}</p>
+          <p style="font-size:11px;color:#065f46;margin:2px 0 0;">new selectors</p>
         </div>
-        <div style="background:#fee2e2;border-radius:8px;padding:10px 16px;text-align:center;min-width:120px;">
-          <p style="font-size:24px;font-weight:700;color:#991b1b;margin:0;">-${structuralAnalysis.removedSelectors.length}</p>
-          <p style="font-size:12px;color:#991b1b;margin:2px 0 0;">removed selectors</p>
+        <div style="background:#fee2e2;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#991b1b;margin:0;">-${sa.removedSelectors.length}</p>
+          <p style="font-size:11px;color:#991b1b;margin:2px 0 0;">removed selectors</p>
         </div>
       </div>
 
       ${addedSel || removedSel ? `
       <div style="margin-bottom:12px;">
-        ${addedSel ? `<div style="margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#065f46;">Added: </span>${addedSel}</div>` : ''}
+        ${addedSel   ? `<div style="margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#065f46;">Added: </span>${addedSel}</div>` : ''}
         ${removedSel ? `<div><span style="font-size:12px;font-weight:600;color:#991b1b;">Removed: </span>${removedSel}</div>` : ''}
       </div>` : ''}
 
       <details style="margin-top:12px;">
         <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#475569;user-select:none;padding:6px 0;">
-          Show HTML diff (${structuralAnalysis.htmlDiffSummary})
+          Show HTML diff (${sa.htmlDiffSummary})
         </summary>
         <pre style="margin:10px 0 0;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:11px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">${diffHtml}</pre>
       </details>
@@ -199,14 +226,15 @@ export function renderReport(report: CompareReport): string {
     >${dot}${vr.viewport.charAt(0).toUpperCase() + vr.viewport.slice(1)}</button>`;
   }).join('\n');
 
-  const panels = report.viewports.map((vr, i) => renderViewportPanel(vr, i)).join('\n');
+  const panels = report.viewports
+    .map((vr, i) => renderViewportPanel(vr, i, report.url1, report.url2))
+    .join('\n');
+
   const ts = new Date(report.createdAt).toLocaleString();
   const duration = (report.durationMs / 1000).toFixed(1);
-
   const modeBadge = report.aiMode
     ? `<span style="background:#e0e7ff;color:#4338ca;font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;">AI analysis</span>`
     : `<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:3px 10px;border-radius:99px;font-weight:600;">pixel diff · no AI</span>`;
-
   const summaryLabel = report.aiMode ? 'visual changes' : 'changed pixels';
 
   return `<!DOCTYPE html>
@@ -214,7 +242,7 @@ export function renderReport(report: CompareReport): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ohsee report — ${escapeHtml(report.url1)} vs ${escapeHtml(report.url2)}</title>
+  <title>ohsee — ${escapeHtml(urlLabel(report.url1))} vs ${escapeHtml(urlLabel(report.url2))}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #0f172a; }
@@ -235,23 +263,23 @@ export function renderReport(report: CompareReport): string {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
         <div>
-          <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">URL 1 (before)</p>
-          <a href="${escapeHtml(report.url1)}" style="font-size:14px;word-break:break-all;">${escapeHtml(report.url1)}</a>
+          <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">${escapeHtml(urlLabel(report.url1))}</p>
+          <a href="${escapeHtml(report.url1)}" style="font-size:13px;color:#64748b;word-break:break-all;">${escapeHtml(report.url1)}</a>
         </div>
         <div>
-          <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">URL 2 (after)</p>
-          <a href="${escapeHtml(report.url2)}" style="font-size:14px;word-break:break-all;">${escapeHtml(report.url2)}</a>
+          <p style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin:0 0 4px;">${escapeHtml(urlLabel(report.url2))}</p>
+          <a href="${escapeHtml(report.url2)}" style="font-size:13px;color:#64748b;word-break:break-all;">${escapeHtml(report.url2)}</a>
         </div>
       </div>
       <div style="display:flex;gap:16px;flex-wrap:wrap;color:#64748b;font-size:13px;">
         <span>📅 ${escapeHtml(ts)}</span>
         <span>⏱ ${escapeHtml(duration)}s</span>
         ${report.aiMode ? `<span>🤖 ${escapeHtml(report.modelUsed)}</span>` : ''}
-        <span>🆔 ${escapeHtml(report.id)}</span>
+        <span style="font-size:11px;color:#cbd5e1;">ID: ${escapeHtml(report.id)}</span>
       </div>
     </div>
 
-    <!-- Executive Summary -->
+    <!-- Summary -->
     <div style="background:#6366f1;border-radius:12px;padding:24px;margin-bottom:24px;color:#fff;">
       <h2 style="font-size:18px;font-weight:700;margin:0 0 12px;">Summary</h2>
       <p style="margin:0 0 16px;line-height:1.6;opacity:0.95;">${escapeHtml(report.overallSummary)}</p>
@@ -286,7 +314,6 @@ export function renderReport(report: CompareReport): string {
     </div>
 
   </div>
-
   <script>
     function switchTab(btn) {
       document.querySelectorAll('.tab-btn').forEach(function(b) {

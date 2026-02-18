@@ -23,6 +23,11 @@ async function captureOne(
       await page.waitForTimeout(waitMs);
     }
 
+    // Hide scrollbars so both pages render at identical pixel width
+    await page.addStyleTag({
+      content: '::-webkit-scrollbar { display: none !important; } * { scrollbar-width: none !important; }',
+    });
+
     // Full-page screenshot captures the entire scrollable document
     const buffer = await page.screenshot({ fullPage: true, type: 'png' });
     const imageBase64 = buffer.toString('base64');
