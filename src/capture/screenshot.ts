@@ -37,6 +37,28 @@ export async function captureScreenshots(
           await page.goto(url, { waitUntil: 'networkidle', timeout: 60_000 });
           if (waitMs > 0) await page.waitForTimeout(waitMs);
 
+          // Scroll through the full page to trigger lazy-loaded content
+          // (IntersectionObserver, scroll-event listeners, etc.)
+          await page.evaluate(async () => {
+            await new Promise<void>((resolve) => {
+              const distance = 250;
+              const intervalMs = 80;
+              const timer = setInterval(() => {
+                window.scrollBy(0, distance);
+                const scrolled = window.scrollY + window.innerHeight;
+                if (scrolled >= document.documentElement.scrollHeight) {
+                  clearInterval(timer);
+                  window.scrollTo(0, 0);
+                  resolve();
+                }
+              }, intervalMs);
+            });
+          });
+
+          // Wait for anything triggered by scrolling to settle
+          await page.waitForLoadState('networkidle');
+          await page.waitForTimeout(300);
+
           const buffer = await page.screenshot({ fullPage: true, type: 'png' });
           return {
             viewport: vp.name,
