@@ -1,6 +1,44 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { PNG } from 'pngjs';
 import { CapturedScreenshot, VisualAnalysis, VisualChange, ViewportName } from '../types/index.js';
 import { VIEWPORTS } from '../capture/screenshot.js';
+
+// Claude's hard limit per image dimension
+const MAX_DIM = 7900;
+
+/**
+ * Scale a base64 PNG down so neither dimension exceeds MAX_DIM.
+ * Uses nearest-neighbour interpolation — fast and sufficient for Claude's
+ * visual analysis (it doesn't need pixel-perfect quality).
+ * Returns the original string unchanged if already within limits.
+ */
+function fitImageForClaude(base64: string): string {
+  const buf = Buffer.from(base64, 'base64');
+  const src = PNG.sync.read(buf);
+  const { width, height } = src;
+
+  if (width <= MAX_DIM && height <= MAX_DIM) return base64;
+
+  const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+  const dstW  = Math.max(1, Math.floor(width  * scale));
+  const dstH  = Math.max(1, Math.floor(height * scale));
+
+  const dst = new PNG({ width: dstW, height: dstH });
+  for (let y = 0; y < dstH; y++) {
+    for (let x = 0; x < dstW; x++) {
+      const srcX = Math.min(width  - 1, Math.floor(x / scale));
+      const srcY = Math.min(height - 1, Math.floor(y / scale));
+      const si = (srcY * width + srcX) * 4;
+      const di = (y * dstW + x) * 4;
+      dst.data[di]     = src.data[si];
+      dst.data[di + 1] = src.data[si + 1];
+      dst.data[di + 2] = src.data[si + 2];
+      dst.data[di + 3] = src.data[si + 3];
+    }
+  }
+
+  return PNG.sync.write(dst).toString('base64');
+}
 
 const VISUAL_PROMPT = (viewport: ViewportName, width: number, height: number) => `
 You are a UI regression testing assistant. You will be shown two screenshots of the same page at the ${viewport} viewport (${width}×${height}px).
@@ -44,6 +82,9 @@ async function callVisual(
 ): Promise<VisualAnalysis> {
   const vp = VIEWPORTS.find((v) => v.name === before.viewport)!;
 
+  const beforeData = fitImageForClaude(before.imageBase64);
+  const afterData  = fitImageForClaude(after.imageBase64);
+
   const message = await client.messages.create({
     model,
     max_tokens: 2048,
@@ -57,11 +98,11 @@ async function callVisual(
           },
           {
             type: 'image',
-            source: { type: 'base64', media_type: before.mediaType, data: before.imageBase64 },
+            source: { type: 'base64', media_type: before.mediaType, data: beforeData },
           },
           {
             type: 'image',
-            source: { type: 'base64', media_type: after.mediaType, data: after.imageBase64 },
+            source: { type: 'base64', media_type: after.mediaType, data: afterData },
           },
         ],
       },

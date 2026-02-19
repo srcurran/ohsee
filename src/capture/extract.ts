@@ -46,11 +46,71 @@ const CLASS_STYLE_PROPS = [
 const PROP_SET = new Set(CLASS_STYLE_PROPS);
 
 /**
+ * Walk CSS text and call onRule(selector, body) for every non-at-rule block.
+ * Recurses into @media / @supports / @layer / @layer etc.
+ */
+function walkCssRules(text: string, onRule: (selector: string, body: string) => void): void {
+  let i = 0;
+  while (i < text.length) {
+    const blockStart = text.indexOf('{', i);
+    if (blockStart === -1) break;
+
+    let depth = 1;
+    let j = blockStart + 1;
+    while (j < text.length && depth > 0) {
+      if (text[j] === '{') depth++;
+      else if (text[j] === '}') depth--;
+      j++;
+    }
+
+    const selector = text.slice(i, blockStart).trim();
+    const body = text.slice(blockStart + 1, j - 1);
+
+    if (selector.startsWith('@')) {
+      walkCssRules(body, onRule);
+    } else {
+      onRule(selector, body);
+    }
+    i = j;
+  }
+}
+
+/**
+ * Extract CSS custom property values from :root {} blocks.
+ * Returns a map of --variable-name → value.
+ */
+function parseCssCustomProps(stripped: string): Record<string, string> {
+  const props: Record<string, string> = {};
+  walkCssRules(stripped, (selector, body) => {
+    if (!selector.split(',').some((s) => s.trim() === ':root')) return;
+    for (const decl of body.split(';')) {
+      const colon = decl.indexOf(':');
+      if (colon === -1) continue;
+      const name = decl.slice(0, colon).trim();
+      const val  = decl.slice(colon + 1).trim();
+      if (name.startsWith('--') && val) props[name] = val;
+    }
+  });
+  return props;
+}
+
+/**
+ * Resolve one level of var(--name[, fallback]) substitution.
+ * Handles the most common case; doesn't recurse for variables-in-variables.
+ */
+function resolveVars(value: string, customProps: Record<string, string>): string {
+  return value.replace(/var\((--[\w-]+)(?:\s*,\s*([^)]*))?\)/g, (_match, name: string, fallback?: string) => {
+    return customProps[name] ?? fallback?.trim() ?? _match;
+  });
+}
+
+/**
  * Parse CSS text and extract declared properties for simple class selectors.
  * Handles @media/@supports nesting by recursing into blocks.
  * Only matches bare class selectors like `.foo` or `.foo-bar` — not
- * `.foo .bar`, `.foo:hover`, etc. — to avoid attributing inherited or
- * state-specific values to the wrong class.
+ * `.foo .bar`, `.foo:hover`, etc.
+ * CSS custom properties (var(--x)) are resolved from :root declarations so
+ * differences in variable values are surfaced as property changes.
  */
 function parseClassStylesFromCss(cssText: string): Record<string, Record<string, string>> {
   const result: Record<string, Record<string, string>> = {};
@@ -58,54 +118,28 @@ function parseClassStylesFromCss(cssText: string): Record<string, Record<string,
   // Strip block comments
   const stripped = cssText.replace(/\/\*[\s\S]*?\*\//g, '');
 
-  function extractRules(text: string) {
-    let i = 0;
-    while (i < text.length) {
-      const blockStart = text.indexOf('{', i);
-      if (blockStart === -1) break;
+  // Collect :root custom properties first so we can resolve var() references
+  const customProps = parseCssCustomProps(stripped);
 
-      // Find the matching closing brace
-      let depth = 1;
-      let j = blockStart + 1;
-      while (j < text.length && depth > 0) {
-        if (text[j] === '{') depth++;
-        else if (text[j] === '}') depth--;
-        j++;
-      }
-
-      const selector = text.slice(i, blockStart).trim();
-      const body = text.slice(blockStart + 1, j - 1);
-
-      if (selector.startsWith('@')) {
-        // At-rule with a block (@media, @supports, @layer …) — recurse
-        extractRules(body);
-      } else {
-        // Style rule — split comma-separated selectors
-        for (const sel of selector.split(',')) {
-          const trimmed = sel.trim();
-          // Only bare class selectors: .foo or .foo-bar
-          const match = trimmed.match(/^\.([\w-]+)$/);
-          if (!match) continue;
-          const cls = match[1];
-          if (!result[cls]) result[cls] = {};
-          // Parse declarations
-          for (const decl of body.split(';')) {
-            const colon = decl.indexOf(':');
-            if (colon === -1) continue;
-            const prop = decl.slice(0, colon).trim();
-            const val = decl.slice(colon + 1).trim();
-            if (PROP_SET.has(prop) && val) {
-              result[cls][prop] = val;
-            }
-          }
+  walkCssRules(stripped, (selector, body) => {
+    for (const sel of selector.split(',')) {
+      const trimmed = sel.trim();
+      const match = trimmed.match(/^\.([\w-]+)$/);
+      if (!match) continue;
+      const cls = match[1];
+      if (!result[cls]) result[cls] = {};
+      for (const decl of body.split(';')) {
+        const colon = decl.indexOf(':');
+        if (colon === -1) continue;
+        const prop = decl.slice(0, colon).trim();
+        const raw  = decl.slice(colon + 1).trim();
+        if (PROP_SET.has(prop) && raw) {
+          result[cls][prop] = resolveVars(raw, customProps);
         }
       }
-
-      i = j;
     }
-  }
+  });
 
-  extractRules(stripped);
   return result;
 }
 
