@@ -50,10 +50,12 @@ function diffCssClasses(
   const beforeStyles = before.classComputedStyles;
   const afterStyles  = after.classComputedStyles;
 
-  for (const cls of Object.keys(afterStyles)) {
-    const bProps = beforeStyles[cls];
-    const aProps = afterStyles[cls];
-    if (!bProps) continue; // brand-new class — captured by addedSelectors
+  // Union of all classes seen in either site
+  const allClasses = new Set([...Object.keys(beforeStyles), ...Object.keys(afterStyles)]);
+
+  for (const cls of allClasses) {
+    const bProps = beforeStyles[cls] ?? {};
+    const aProps = afterStyles[cls] ?? {};
 
     const changedProperties = [];
     const allProps = new Set([...Object.keys(bProps), ...Object.keys(aProps)]);
@@ -61,8 +63,12 @@ function diffCssClasses(
     for (const prop of allProps) {
       const bVal = bProps[prop] ?? '';
       const aVal = aProps[prop] ?? '';
-      if (bVal !== aVal && bVal !== '' && aVal !== '') {
-        changedProperties.push({ property: prop, before: bVal, after: aVal });
+      if (bVal !== aVal) {
+        changedProperties.push({
+          property: prop,
+          before: bVal || '(not declared)',
+          after: aVal || '(not declared)',
+        });
       }
     }
 
