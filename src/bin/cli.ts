@@ -3,7 +3,7 @@ import { runCompare } from '../commands/compare.js';
 import { ViewportName, CompareOptions } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
-const DEFAULT_MODEL = 'claude-sonnet-4-6-20260217';
+const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const VALID_VIEWPORTS: ViewportName[] = ['mobile', 'tablet', 'laptop', 'desktop'];
 
 const program = new Command();

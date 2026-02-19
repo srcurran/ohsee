@@ -10,7 +10,7 @@ export async function extractStructural(
   const configs = VIEWPORTS.filter((v) => viewportNames.includes(v.name));
 
   const browser = await chromium.launch({
-    args: ['--hide-scrollbars', '--force-device-scale-factor=1'],
+    args: ['--hide-scrollbars', '--force-device-scale-factor=1', '--disable-cache'],
   });
 
   try {

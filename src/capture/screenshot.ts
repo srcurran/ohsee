@@ -20,7 +20,7 @@ export async function captureScreenshots(
   // --force-device-scale-factor=1: ensures screenshots are always at 1x,
   // even on Retina displays, so both URLs produce identical-width images.
   const browser = await chromium.launch({
-    args: ['--hide-scrollbars', '--force-device-scale-factor=1'],
+    args: ['--hide-scrollbars', '--force-device-scale-factor=1', '--disable-cache'],
   });
 
   try {
@@ -55,9 +55,8 @@ export async function captureScreenshots(
             });
           });
 
-          // Wait for anything triggered by scrolling to settle
-          await page.waitForLoadState('networkidle');
-          await page.waitForTimeout(300);
+          // Give anything triggered by scrolling a moment to render
+          await page.waitForTimeout(800);
 
           const buffer = await page.screenshot({ fullPage: true, type: 'png' });
           return {
