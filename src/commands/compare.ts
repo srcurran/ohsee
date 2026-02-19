@@ -89,7 +89,7 @@ export async function runCompare(
       const b = beforeSnapshots.find((s) => s.viewport === vp)!;
       const a = afterSnapshots.find((s) => s.viewport === vp)!;
       const r = analyzeStructural(b, a, vp);
-      return sum + r.htmlChangedLines + r.cssChangedLines;
+      return sum + r.cssClassChanges.length + r.elementClassChanges.length + r.contentChanges.length;
     }, 0);
 
     overallSummary = buildNoAiSummary(viewportNames, pixelAnalyses, totalStructural);
@@ -141,7 +141,7 @@ export async function runCompare(
   } else {
     logger.info(`Visual changes: ${report.totalVisualChanges}`);
   }
-  logger.info(`Structural changed lines: ${report.totalStructuralChanges}`);
+  logger.info(`Structural changes: ${report.totalStructuralChanges}`);
   logger.info(`Duration: ${(report.durationMs / 1000).toFixed(1)}s`);
 
   // ── 6. Auto-open ────────────────────────────────────────────────────────

@@ -45,7 +45,9 @@ export function buildReport(params: {
       (visualAnalysis?.changes.length ?? 0) > 0 ||
       (pixelAnalysis?.changedPixels ?? 0) > 0 ||
       structuralAnalysis.htmlChangedLines > 0 ||
-      structuralAnalysis.cssChangedLines > 0;
+      structuralAnalysis.cssClassChanges.length > 0 ||
+      structuralAnalysis.elementClassChanges.length > 0 ||
+      structuralAnalysis.contentChanges.length > 0;
 
     return {
       viewport: vp,
@@ -63,7 +65,11 @@ export function buildReport(params: {
     : viewports.reduce((sum, vr) => sum + (vr.pixelAnalysis?.changedPixels ?? 0), 0);
 
   const totalStructuralChanges = viewports.reduce(
-    (sum, vr) => sum + vr.structuralAnalysis.htmlChangedLines + vr.structuralAnalysis.cssChangedLines,
+    (sum, vr) =>
+      sum +
+      vr.structuralAnalysis.cssClassChanges.length +
+      vr.structuralAnalysis.elementClassChanges.length +
+      vr.structuralAnalysis.contentChanges.length,
     0,
   );
 

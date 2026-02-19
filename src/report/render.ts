@@ -1,4 +1,13 @@
-import { CompareReport, ViewportResult, VisualChange, ChangeSeverity, ChangeType } from '../types/index.js';
+import {
+  CompareReport,
+  ViewportResult,
+  VisualChange,
+  ChangeSeverity,
+  ChangeType,
+  CssClassChange,
+  ElementClassChange,
+  ContentChange,
+} from '../types/index.js';
 
 function escapeHtml(str: string): string {
   return str
@@ -157,9 +166,84 @@ function renderScreenshotSection(
   return '';
 }
 
+function renderCssClassChanges(changes: CssClassChange[]): string {
+  if (changes.length === 0) return '';
+  const cards = changes.map((c) => {
+    const propRows = c.changedProperties.map((p) =>
+      `<tr>
+        <td style="padding:3px 8px 3px 0;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#475569;white-space:nowrap;">${escapeHtml(p.property)}</td>
+        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#dc2626;text-decoration:line-through;white-space:nowrap;">${escapeHtml(p.before)}</td>
+        <td style="padding:3px 0 3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#16a34a;white-space:nowrap;">${escapeHtml(p.after)}</td>
+      </tr>`,
+    ).join('');
+    const impact = c.elementCountBefore + c.elementCountAfter;
+    const impactColor = impact >= 20 ? '#dc2626' : impact >= 6 ? '#d97706' : '#64748b';
+    return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:8px;background:#fff;">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+        <code style="font-size:13px;font-weight:700;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:4px;">.${escapeHtml(c.className)}</code>
+        <span style="font-size:11px;color:${impactColor};font-weight:600;">${c.elementCountBefore} element${c.elementCountBefore !== 1 ? 's' : ''} affected</span>
+      </div>
+      <table style="border-collapse:collapse;"><tbody>${propRows}</tbody></table>
+    </div>`;
+  }).join('');
+  return `
+  <div style="margin-bottom:20px;">
+    <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">CSS Class Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${changes.length} class${changes.length !== 1 ? 'es' : ''} changed)</span></h4>
+    ${cards}
+  </div>`;
+}
+
+function renderElementClassChanges(changes: ElementClassChange[]): string {
+  if (changes.length === 0) return '';
+  const rows = changes.map((c) => {
+    const added = c.classesAdded.map((cls) =>
+      `<code style="font-size:11px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">+${escapeHtml(cls)}</code>`,
+    ).join('');
+    const removed = c.classesRemoved.map((cls) =>
+      `<code style="font-size:11px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">-${escapeHtml(cls)}</code>`,
+    ).join('');
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;">
+      <code style="font-size:12px;color:#475569;background:#f8fafc;padding:2px 8px;border-radius:4px;white-space:nowrap;flex-shrink:0;">${escapeHtml(c.identifier)}</code>
+      <div style="display:flex;flex-wrap:wrap;gap:2px;">${added}${removed}</div>
+    </div>`;
+  }).join('');
+  return `
+  <div style="margin-bottom:20px;">
+    <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">Element Class Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${changes.length} element${changes.length !== 1 ? 's' : ''})</span></h4>
+    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:0 12px;background:#fff;">${rows}</div>
+  </div>`;
+}
+
+function renderContentChanges(changes: ContentChange[]): string {
+  if (changes.length === 0) return '';
+  const typeBg: Record<string, string> = { text: '#f3e8ff', image: '#e0f2fe', link: '#ffedd5' };
+  const typeFg: Record<string, string> = { text: '#7c3aed', image: '#0369a1', link: '#9a3412' };
+  const rows = changes.map((c) => {
+    const bg = typeBg[c.type] ?? '#f1f5f9';
+    const fg = typeFg[c.type] ?? '#475569';
+    return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fff;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="background:${bg};color:${fg};font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(c.type)}</span>
+        <code style="font-size:12px;color:#64748b;">${escapeHtml(c.location)}</code>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:#fef2f2;border-radius:6px;padding:6px 10px;font-size:12px;color:#7f1d1d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.before)}</div>
+        <div style="background:#f0fdf4;border-radius:6px;padding:6px 10px;font-size:12px;color:#14532d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.after)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+  <div style="margin-bottom:20px;">
+    <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">Content Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${changes.length})</span></h4>
+    ${rows}
+  </div>`;
+}
+
 function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2: string, imagePaths: Record<string, string>): string {
   const { viewport, structuralAnalysis: sa } = vr;
   const display = idx === 0 ? 'block' : 'none';
+
+  const totalStructural = sa.cssClassChanges.length + sa.elementClassChanges.length + sa.contentChanges.length;
 
   const addedSel = sa.addedSelectors
     .map((s) => `<code style="font-size:12px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
@@ -167,13 +251,7 @@ function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2
   const removedSel = sa.removedSelectors
     .map((s) => `<code style="font-size:12px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(s)}</code>`)
     .join(' ');
-  const additionalHtml = sa.additionalFindings.length === 0 ? '' : `
-    <div style="margin-top:20px;">
-      <h4 style="font-size:14px;font-weight:600;color:#334155;margin:0 0 8px;">DOM Changes Not Visible in Screenshots</h4>
-      <ul style="margin:0;padding-left:20px;color:#64748b;font-size:13px;line-height:1.7;">
-        ${sa.additionalFindings.map((f) => `<li>${escapeHtml(f)}</li>`).join('')}
-      </ul>
-    </div>`;
+
   const diffHtml = escapeHtml(sa.rawHtmlDiff).slice(0, 50000);
 
   return `
@@ -181,41 +259,54 @@ function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2
     ${renderScreenshotSection(vr, url1, url2, imagePaths)}
 
     <div style="margin-bottom:20px;">
-      <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Structural Diff</h3>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">Structural Analysis</h3>
+
+      <!-- Stats row -->
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
         <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
-          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.htmlChangedLines}</p>
-          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">HTML changed lines</p>
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${totalStructural}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">structural changes</p>
         </div>
         <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
-          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.cssChangedLines}</p>
-          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">CSS changed lines</p>
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.cssClassChanges.length}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">CSS class changes</p>
         </div>
-        <div style="background:#d1fae5;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.elementClassChanges.length}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">element changes</p>
+        </div>
+        <div style="background:#f1f5f9;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+          <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${sa.contentChanges.length}</p>
+          <p style="font-size:11px;color:#64748b;margin:2px 0 0;">content changes</p>
+        </div>
+        ${sa.addedSelectors.length > 0 ? `<div style="background:#d1fae5;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
           <p style="font-size:22px;font-weight:700;color:#065f46;margin:0;">+${sa.addedSelectors.length}</p>
           <p style="font-size:11px;color:#065f46;margin:2px 0 0;">new selectors</p>
-        </div>
-        <div style="background:#fee2e2;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
+        </div>` : ''}
+        ${sa.removedSelectors.length > 0 ? `<div style="background:#fee2e2;border-radius:8px;padding:10px 16px;text-align:center;min-width:110px;">
           <p style="font-size:22px;font-weight:700;color:#991b1b;margin:0;">-${sa.removedSelectors.length}</p>
           <p style="font-size:11px;color:#991b1b;margin:2px 0 0;">removed selectors</p>
-        </div>
+        </div>` : ''}
       </div>
 
+      ${renderCssClassChanges(sa.cssClassChanges)}
+      ${renderElementClassChanges(sa.elementClassChanges)}
+      ${renderContentChanges(sa.contentChanges)}
+
       ${addedSel || removedSel ? `
-      <div style="margin-bottom:12px;">
+      <div style="margin-bottom:16px;">
+        <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 8px;">New / Removed CSS Selectors</h4>
         ${addedSel   ? `<div style="margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#065f46;">Added: </span>${addedSel}</div>` : ''}
         ${removedSel ? `<div><span style="font-size:12px;font-weight:600;color:#991b1b;">Removed: </span>${removedSel}</div>` : ''}
       </div>` : ''}
 
       <details style="margin-top:12px;">
         <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#475569;user-select:none;padding:6px 0;">
-          Show HTML diff (${sa.htmlDiffSummary})
+          Raw HTML diff (${sa.htmlChangedLines} changed lines)
         </summary>
         <pre style="margin:10px 0 0;padding:12px;background:#0f172a;color:#e2e8f0;border-radius:8px;font-size:11px;line-height:1.5;overflow-x:auto;white-space:pre-wrap;word-break:break-all;">${diffHtml}</pre>
       </details>
     </div>
-
-    ${additionalHtml}
   </div>`;
 }
 
@@ -296,7 +387,7 @@ export function renderReport(report: CompareReport, imagePaths: Record<string, s
         </div>
         <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 20px;text-align:center;">
           <p style="font-size:28px;font-weight:800;margin:0;">${report.totalStructuralChanges}</p>
-          <p style="font-size:12px;opacity:0.8;margin:2px 0 0;">structural changed lines</p>
+          <p style="font-size:12px;opacity:0.8;margin:2px 0 0;">structural changes</p>
         </div>
         <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 20px;text-align:center;">
           <p style="font-size:28px;font-weight:800;margin:0;">${report.viewports.filter((v) => v.hasChanges).length}/${report.viewports.length}</p>

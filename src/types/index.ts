@@ -23,9 +23,9 @@ export interface ViewportConfig {
 export interface CapturedScreenshot {
   viewport: ViewportName;
   url: string;
-  imageBase64: string; // raw base64, no data: prefix
+  imageBase64: string;
   mediaType: 'image/png';
-  capturedAt: string; // ISO 8601
+  capturedAt: string;
 }
 
 export interface StructuralSnapshot {
@@ -34,6 +34,8 @@ export interface StructuralSnapshot {
   rawHtml: string;
   inlineStyles: string;
   computedStyleSample: Array<{ selector: string; styles: Record<string, string> }>;
+  /** Computed styles sampled from the first element that uses each CSS class. */
+  classComputedStyles: Record<string, Record<string, string>>;
 }
 
 export interface VisualChange {
@@ -55,24 +57,67 @@ export interface VisualAnalysis {
 
 export interface PixelAnalysis {
   viewport: ViewportName;
-  diffImageBase64: string; // base64 PNG with changed pixels highlighted
+  diffImageBase64: string;
   totalPixels: number;
   changedPixels: number;
   percentChanged: number;
   beforeWidth: number;
   beforeHeight: number;
-  afterHeight: number; // full-page heights can differ
+  afterHeight: number;
+}
+
+// ── Structural analysis types ────────────────────────────────────────────────
+
+/** A single CSS property that changed value on a class. */
+export interface CssPropertyChange {
+  property: string;
+  before: string;
+  after: string;
+}
+
+/**
+ * A CSS class whose computed visual properties changed between the two pages,
+ * plus how many elements in each page use that class.
+ */
+export interface CssClassChange {
+  className: string;
+  changedProperties: CssPropertyChange[];
+  elementCountBefore: number;
+  elementCountAfter: number;
+}
+
+/**
+ * An element (matched by id or semantic tag) whose class attribute changed.
+ */
+export interface ElementClassChange {
+  identifier: string;    // e.g. '#hero' or '<header>'
+  tag: string;
+  classesBefore: string[];
+  classesAfter: string[];
+  classesAdded: string[];
+  classesRemoved: string[];
+}
+
+/** A piece of visible content (text, image, link) that changed. */
+export interface ContentChange {
+  type: 'text' | 'image' | 'link';
+  location: string;      // human-readable — e.g. 'h1', 'img[alt="Hero"]', 'a "Sign up"'
+  before: string;
+  after: string;
 }
 
 export interface StructuralAnalysis {
   viewport: ViewportName;
-  htmlDiffSummary: string;
+  cssClassChanges: CssClassChange[];
+  elementClassChanges: ElementClassChange[];
+  contentChanges: ContentChange[];
+  /** Total changed HTML lines — kept for the summary stat. */
   htmlChangedLines: number;
-  cssChangedLines: number;
+  /** CSS class selectors that are new in URL 2. */
   addedSelectors: string[];
+  /** CSS class selectors that were removed from URL 2. */
   removedSelectors: string[];
-  confirmsVisualFindings: boolean;
-  additionalFindings: string[];
+  /** Raw unified diff — shown collapsed in the report for debugging. */
   rawHtmlDiff: string;
 }
 
@@ -80,15 +125,15 @@ export interface ViewportResult {
   viewport: ViewportName;
   beforeScreenshot: CapturedScreenshot;
   afterScreenshot: CapturedScreenshot;
-  visualAnalysis?: VisualAnalysis;  // undefined in --no-ai mode
-  pixelAnalysis?: PixelAnalysis;    // defined in --no-ai mode
+  visualAnalysis?: VisualAnalysis;
+  pixelAnalysis?: PixelAnalysis;
   structuralAnalysis: StructuralAnalysis;
   hasChanges: boolean;
 }
 
 export interface CompareReport {
-  id: string; // UUID
-  createdAt: string; // ISO 8601
+  id: string;
+  createdAt: string;
   url1: string;
   url2: string;
   viewports: ViewportResult[];
@@ -98,7 +143,7 @@ export interface CompareReport {
   durationMs: number;
   ohseeVersion: string;
   modelUsed: string;
-  aiMode: boolean; // false when --no-ai
+  aiMode: boolean;
 }
 
 export interface CompareOptions {
