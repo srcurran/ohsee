@@ -77,12 +77,12 @@ export async function runCompare(
   let visualAnalyses;
   let pixelAnalyses;
 
-  if (options.noAi) {
-    // ── 3a. Pixel diff (no API) ─────────────────────────────────────────
-    spinner.start('Running pixel diff…');
-    pixelAnalyses = runPixelAnalysis(beforeScreenshots, afterScreenshots, viewportNames);
-    spinner.succeed('Pixel diff complete');
+  // ── 3. Pixel diff (always — used for overlay image in both modes) ──────
+  spinner.start('Running pixel diff…');
+  pixelAnalyses = runPixelAnalysis(beforeScreenshots, afterScreenshots, viewportNames);
+  spinner.succeed('Pixel diff complete');
 
+  if (options.noAi) {
     // Compute structural changes for summary
     const { analyzeStructural } = await import('../analyze/structural.js');
     const totalStructural = viewportNames.reduce((sum, vp) => {

@@ -83,15 +83,22 @@ function renderScreenshotSection(
   const label2 = escapeHtml(urlLabel(url2));
   const vp = vr.viewport;
 
-  if (vr.pixelAnalysis) {
-    const pa = vr.pixelAnalysis;
+  // Always render the 3-column overlay if pixel analysis is available
+  const pa = vr.pixelAnalysis;
+  const va = vr.visualAnalysis;
+
+  if (!pa && !va) return '';
+
+  let screenshotHtml = '';
+
+  if (pa) {
     const pct = pa.percentChanged.toFixed(2);
     const color = pa.percentChanged > 20 ? '#dc2626' : pa.percentChanged > 5 ? '#d97706' : '#16a34a';
     const heightNote = pa.beforeHeight !== pa.afterHeight
       ? `<p style="font-size:12px;color:#94a3b8;margin:10px 0 0;font-style:italic;text-align:center;">Page heights differ: ${pa.beforeHeight}px vs ${pa.afterHeight}px — shorter page padded for comparison.</p>`
       : '';
 
-    return `
+    screenshotHtml = `
       <!-- Three-column: URL1 | Diff | URL2 -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;align-items:start;">
         <div>
@@ -113,8 +120,6 @@ function renderScreenshotSection(
                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
         </div>
       </div>
-
-      <!-- Pixel stats row -->
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;align-items:center;">
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 16px;min-width:140px;">
           <p style="font-size:22px;font-weight:700;color:${color};margin:0;">${pct}%</p>
@@ -125,35 +130,20 @@ function renderScreenshotSection(
           <p style="font-size:22px;font-weight:700;color:#0f172a;margin:0;">${pa.changedPixels.toLocaleString()}</p>
           <p style="font-size:11px;color:#64748b;margin:2px 0 0;">of ${pa.totalPixels.toLocaleString()} total</p>
         </div>
-        <p style="font-size:12px;color:#94a3b8;margin:0;font-style:italic;">Hot pink = changed pixels. Alignment-aware: layout shifts are compensated per section so only genuine changes are shown.</p>
+        <p style="font-size:12px;color:#94a3b8;margin:0;font-style:italic;">Hot pink = changed pixels. Alignment-aware per section.</p>
       </div>
       ${heightNote}`;
   }
 
-  if (vr.visualAnalysis) {
-    const va = vr.visualAnalysis;
+  if (va) {
     const changesHtml = va.changes.length === 0
       ? `<p style="color:#64748b;font-style:italic;margin:0;">No visual changes detected at this viewport.</p>`
       : va.changes.map(renderChange).join('');
-    return `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">
-        <div>
-          <p style="${COL_LABEL}" title="${escapeHtml(url1)}">${label1}</p>
-          <img src="${imagePaths[`before-${vp}`]}"
-               alt="Screenshot of ${label1}"
-               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
-        </div>
-        <div>
-          <p style="${COL_LABEL}" title="${escapeHtml(url2)}">${label2}</p>
-          <img src="${imagePaths[`after-${vp}`]}"
-               alt="Screenshot of ${label2}"
-               style="width:100%;border:1px solid #e2e8f0;border-radius:8px;display:block;" />
-        </div>
-      </div>
+    screenshotHtml += `
       <div style="margin-bottom:24px;">
         <h3 style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 12px;">
-          Visual Changes
-          <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:8px;">(${va.changes.length} found · ${va.promptTokens + va.outputTokens} tokens)</span>
+          AI Visual Analysis
+          <span style="font-size:13px;font-weight:500;color:#64748b;margin-left:8px;">(${va.changes.length} changes · ${va.promptTokens + va.outputTokens} tokens)</span>
         </h3>
         ${changesHtml}
         ${va.confidenceNote ? `<p style="font-size:12px;color:#94a3b8;margin:8px 0 0;font-style:italic;">${escapeHtml(va.confidenceNote)}</p>` : ''}
@@ -163,58 +153,131 @@ function renderScreenshotSection(
       </div>`;
   }
 
-  return '';
+  return screenshotHtml;
 }
 
-function renderCssClassChanges(changes: CssClassChange[]): string {
-  if (changes.length === 0) return '';
-  const cards = changes.map((c) => {
+const SITE_LABEL = 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin:0 0 4px;';
+
+function renderCssClassCard(c: CssClassChange, label1: string, label2: string): string {
+  const elementCount = c.changeKind === 'added' ? c.elementCountAfter : c.elementCountBefore;
+  const impactColor = elementCount >= 20 ? '#dc2626' : elementCount >= 6 ? '#d97706' : '#64748b';
+
+  let badge = '';
+  let table = '';
+
+  if (c.changeKind === 'changed') {
+    badge = `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;">changed</span>`;
     const propRows = c.changedProperties.map((p) =>
       `<tr>
-        <td style="padding:3px 8px 3px 0;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#475569;white-space:nowrap;">${escapeHtml(p.property)}</td>
-        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#dc2626;text-decoration:line-through;white-space:nowrap;">${escapeHtml(p.before)}</td>
-        <td style="padding:3px 0 3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#16a34a;white-space:nowrap;">${escapeHtml(p.after)}</td>
+        <td style="padding:3px 10px 3px 0;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#475569;white-space:nowrap;">${escapeHtml(p.property)}</td>
+        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#7f1d1d;background:#fef2f2;border-radius:4px;white-space:nowrap;">${escapeHtml(p.before)}</td>
+        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#14532d;background:#f0fdf4;border-radius:4px;white-space:nowrap;">${escapeHtml(p.after)}</td>
       </tr>`,
     ).join('');
-    const impact = c.elementCountBefore + c.elementCountAfter;
-    const impactColor = impact >= 20 ? '#dc2626' : impact >= 6 ? '#d97706' : '#64748b';
-    return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:8px;background:#fff;">
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
-        <code style="font-size:13px;font-weight:700;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:4px;">.${escapeHtml(c.className)}</code>
-        <span style="font-size:11px;color:${impactColor};font-weight:600;">${c.elementCountBefore} element${c.elementCountBefore !== 1 ? 's' : ''} affected</span>
-      </div>
-      <table style="border-collapse:collapse;"><tbody>${propRows}</tbody></table>
-    </div>`;
-  }).join('');
-  return `
-  <div style="margin-bottom:20px;">
-    <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">CSS Class Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${changes.length} class${changes.length !== 1 ? 'es' : ''} changed)</span></h4>
-    ${cards}
+    table = `<table style="border-collapse:separate;border-spacing:0 3px;">
+      <thead><tr>
+        <th style="${SITE_LABEL}color:#94a3b8;text-align:left;padding-right:10px;font-weight:600;">property</th>
+        <th style="${SITE_LABEL}color:#991b1b;text-align:left;padding-right:10px;">${escapeHtml(label1)}</th>
+        <th style="${SITE_LABEL}color:#15803d;text-align:left;">${escapeHtml(label2)}</th>
+      </tr></thead>
+      <tbody>${propRows}</tbody>
+    </table>`;
+  } else if (c.changeKind === 'added') {
+    badge = `<span style="background:#d1fae5;color:#065f46;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;">new in ${escapeHtml(label2)}</span>`;
+    const propRows = c.changedProperties.map((p) =>
+      `<tr>
+        <td style="padding:3px 10px 3px 0;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#475569;white-space:nowrap;">${escapeHtml(p.property)}</td>
+        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#14532d;background:#f0fdf4;border-radius:4px;white-space:nowrap;">${escapeHtml(p.after)}</td>
+      </tr>`,
+    ).join('');
+    table = `<table style="border-collapse:separate;border-spacing:0 3px;">
+      <thead><tr>
+        <th style="${SITE_LABEL}color:#94a3b8;text-align:left;padding-right:10px;font-weight:600;">property</th>
+        <th style="${SITE_LABEL}color:#15803d;text-align:left;">${escapeHtml(label2)}</th>
+      </tr></thead>
+      <tbody>${propRows}</tbody>
+    </table>`;
+  } else {
+    badge = `<span style="background:#fee2e2;color:#991b1b;font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;">removed in ${escapeHtml(label2)}</span>`;
+    const propRows = c.changedProperties.map((p) =>
+      `<tr>
+        <td style="padding:3px 10px 3px 0;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#475569;white-space:nowrap;">${escapeHtml(p.property)}</td>
+        <td style="padding:3px 8px;font-size:12px;font-family:'SF Mono','Fira Code',Consolas,monospace;color:#7f1d1d;background:#fef2f2;border-radius:4px;white-space:nowrap;">${escapeHtml(p.before)}</td>
+      </tr>`,
+    ).join('');
+    table = `<table style="border-collapse:separate;border-spacing:0 3px;">
+      <thead><tr>
+        <th style="${SITE_LABEL}color:#94a3b8;text-align:left;padding-right:10px;font-weight:600;">property</th>
+        <th style="${SITE_LABEL}color:#991b1b;text-align:left;">${escapeHtml(label1)}</th>
+      </tr></thead>
+      <tbody>${propRows}</tbody>
+    </table>`;
+  }
+
+  return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:8px;background:#fff;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <code style="font-size:13px;font-weight:700;color:#0f172a;background:#f1f5f9;padding:2px 8px;border-radius:4px;">.${escapeHtml(c.className)}</code>
+      ${badge}
+      ${elementCount > 0 ? `<span style="font-size:11px;color:${impactColor};font-weight:600;">${elementCount} element${elementCount !== 1 ? 's' : ''}</span>` : ''}
+    </div>
+    ${table}
   </div>`;
 }
 
-function renderElementClassChanges(changes: ElementClassChange[]): string {
+function renderCssClassChanges(changes: CssClassChange[], label1: string, label2: string): string {
+  if (changes.length === 0) return '';
+  const changed  = changes.filter((c) => c.changeKind === 'changed');
+  const added    = changes.filter((c) => c.changeKind === 'added');
+  const removed  = changes.filter((c) => c.changeKind === 'removed');
+
+  const totalLabel = [
+    changed.length  > 0 ? `${changed.length} changed`  : '',
+    added.length    > 0 ? `${added.length} new`         : '',
+    removed.length  > 0 ? `${removed.length} removed`   : '',
+  ].filter(Boolean).join(', ');
+
+  return `
+  <div style="margin-bottom:20px;">
+    <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">CSS Class Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${totalLabel})</span></h4>
+    ${changes.map((c) => renderCssClassCard(c, label1, label2)).join('')}
+  </div>`;
+}
+
+function renderElementClassChanges(changes: ElementClassChange[], label1: string, label2: string): string {
   if (changes.length === 0) return '';
   const rows = changes.map((c) => {
-    const added = c.classesAdded.map((cls) =>
-      `<code style="font-size:11px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">+${escapeHtml(cls)}</code>`,
+    // classesRemoved = only in site 1; classesAdded = only in site 2
+    const site1Only = c.classesRemoved.map((cls) =>
+      `<code style="font-size:11px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(cls)}</code>`,
     ).join('');
-    const removed = c.classesRemoved.map((cls) =>
-      `<code style="font-size:11px;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">-${escapeHtml(cls)}</code>`,
+    const site2Only = c.classesAdded.map((cls) =>
+      `<code style="font-size:11px;background:#d1fae5;color:#065f46;padding:1px 6px;border-radius:4px;margin:2px;display:inline-block;">${escapeHtml(cls)}</code>`,
     ).join('');
-    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;">
-      <code style="font-size:12px;color:#475569;background:#f8fafc;padding:2px 8px;border-radius:4px;white-space:nowrap;flex-shrink:0;">${escapeHtml(c.identifier)}</code>
-      <div style="display:flex;flex-wrap:wrap;gap:2px;">${added}${removed}</div>
+    return `<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9;align-items:start;">
+      <code style="font-size:12px;color:#475569;background:#f8fafc;padding:2px 8px;border-radius:4px;white-space:nowrap;">${escapeHtml(c.identifier)}</code>
+      <div>
+        ${site1Only ? `<p style="${SITE_LABEL}color:#991b1b;">${escapeHtml(label1)}</p><div style="display:flex;flex-wrap:wrap;gap:2px;">${site1Only}</div>` : '<span style="font-size:11px;color:#cbd5e1;">—</span>'}
+      </div>
+      <div>
+        ${site2Only ? `<p style="${SITE_LABEL}color:#065f46;">${escapeHtml(label2)}</p><div style="display:flex;flex-wrap:wrap;gap:2px;">${site2Only}</div>` : '<span style="font-size:11px;color:#cbd5e1;">—</span>'}
+      </div>
     </div>`;
   }).join('');
   return `
   <div style="margin-bottom:20px;">
     <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 10px;">Element Class Changes <span style="font-size:12px;font-weight:500;color:#64748b;">(${changes.length} element${changes.length !== 1 ? 's' : ''})</span></h4>
-    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:0 12px;background:#fff;">${rows}</div>
+    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:0 12px;background:#fff;">
+      <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:10px;padding:6px 0;border-bottom:2px solid #e2e8f0;">
+        <span></span>
+        <span style="${SITE_LABEL}color:#991b1b;">${escapeHtml(label1)}</span>
+        <span style="${SITE_LABEL}color:#065f46;">${escapeHtml(label2)}</span>
+      </div>
+      ${rows}
+    </div>
   </div>`;
 }
 
-function renderContentChanges(changes: ContentChange[]): string {
+function renderContentChanges(changes: ContentChange[], label1: string, label2: string): string {
   if (changes.length === 0) return '';
   const typeBg: Record<string, string> = { text: '#f3e8ff', image: '#e0f2fe', link: '#ffedd5' };
   const typeFg: Record<string, string> = { text: '#7c3aed', image: '#0369a1', link: '#9a3412' };
@@ -222,13 +285,19 @@ function renderContentChanges(changes: ContentChange[]): string {
     const bg = typeBg[c.type] ?? '#f1f5f9';
     const fg = typeFg[c.type] ?? '#475569';
     return `<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;background:#fff;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="background:${bg};color:${fg};font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:0.05em;">${escapeHtml(c.type)}</span>
         <code style="font-size:12px;color:#64748b;">${escapeHtml(c.location)}</code>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div style="background:#fef2f2;border-radius:6px;padding:6px 10px;font-size:12px;color:#7f1d1d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.before)}</div>
-        <div style="background:#f0fdf4;border-radius:6px;padding:6px 10px;font-size:12px;color:#14532d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.after)}</div>
+        <div>
+          <p style="${SITE_LABEL}color:#991b1b;margin-bottom:4px;">${escapeHtml(label1)}</p>
+          <div style="background:#fef2f2;border-radius:6px;padding:6px 10px;font-size:12px;color:#7f1d1d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.before)}</div>
+        </div>
+        <div>
+          <p style="${SITE_LABEL}color:#15803d;margin-bottom:4px;">${escapeHtml(label2)}</p>
+          <div style="background:#f0fdf4;border-radius:6px;padding:6px 10px;font-size:12px;color:#14532d;font-family:'SF Mono','Fira Code',Consolas,monospace;word-break:break-all;">${escapeHtml(c.after)}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -289,15 +358,15 @@ function renderViewportPanel(vr: ViewportResult, idx: number, url1: string, url2
         </div>` : ''}
       </div>
 
-      ${renderCssClassChanges(sa.cssClassChanges)}
-      ${renderElementClassChanges(sa.elementClassChanges)}
-      ${renderContentChanges(sa.contentChanges)}
+      ${renderCssClassChanges(sa.cssClassChanges, urlLabel(url1), urlLabel(url2))}
+      ${renderElementClassChanges(sa.elementClassChanges, urlLabel(url1), urlLabel(url2))}
+      ${renderContentChanges(sa.contentChanges, urlLabel(url1), urlLabel(url2))}
 
       ${addedSel || removedSel ? `
       <div style="margin-bottom:16px;">
         <h4 style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 8px;">New / Removed CSS Selectors</h4>
-        ${addedSel   ? `<div style="margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#065f46;">Added: </span>${addedSel}</div>` : ''}
-        ${removedSel ? `<div><span style="font-size:12px;font-weight:600;color:#991b1b;">Removed: </span>${removedSel}</div>` : ''}
+        ${addedSel   ? `<div style="margin-bottom:6px;"><span style="font-size:12px;font-weight:600;color:#065f46;">Only in ${escapeHtml(urlLabel(url2))}: </span>${addedSel}</div>` : ''}
+        ${removedSel ? `<div><span style="font-size:12px;font-weight:600;color:#991b1b;">Only in ${escapeHtml(urlLabel(url1))}: </span>${removedSel}</div>` : ''}
       </div>` : ''}
 
       <details style="margin-top:12px;">

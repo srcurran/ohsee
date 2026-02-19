@@ -2,6 +2,22 @@ import { Command } from 'commander';
 import { runCompare } from '../commands/compare.js';
 import { ViewportName, CompareOptions } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+// Load .env from project root if present
+try {
+  const envPath = resolve(process.cwd(), '.env');
+  const lines = readFileSync(envPath, 'utf8').split('\n');
+  for (const line of lines) {
+    const match = line.match(/^([^#=]+)=(.*)$/);
+    if (match) {
+      const key = match[1].trim();
+      const val = match[2].trim();
+      if (key && !(key in process.env)) process.env[key] = val;
+    }
+  }
+} catch { /* no .env file — that's fine */ }
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 const VALID_VIEWPORTS: ViewportName[] = ['mobile', 'tablet', 'laptop', 'desktop'];

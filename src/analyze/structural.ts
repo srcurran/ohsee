@@ -54,8 +54,13 @@ function diffCssClasses(
   const allClasses = new Set([...Object.keys(beforeStyles), ...Object.keys(afterStyles)]);
 
   for (const cls of allClasses) {
+    const bExists = cls in beforeStyles;
+    const aExists = cls in afterStyles;
     const bProps = beforeStyles[cls] ?? {};
     const aProps = afterStyles[cls] ?? {};
+
+    const changeKind: 'changed' | 'added' | 'removed' =
+      !bExists ? 'added' : !aExists ? 'removed' : 'changed';
 
     const changedProperties = [];
     const allProps = new Set([...Object.keys(bProps), ...Object.keys(aProps)]);
@@ -64,11 +69,7 @@ function diffCssClasses(
       const bVal = bProps[prop] ?? '';
       const aVal = aProps[prop] ?? '';
       if (bVal !== aVal) {
-        changedProperties.push({
-          property: prop,
-          before: bVal || '(not declared)',
-          after: aVal || '(not declared)',
-        });
+        changedProperties.push({ property: prop, before: bVal, after: aVal });
       }
     }
 
@@ -76,15 +77,21 @@ function diffCssClasses(
 
     changes.push({
       className: cls,
+      changeKind,
       changedProperties,
       elementCountBefore: countByClass($before, cls),
       elementCountAfter:  countByClass($after, cls),
     });
   }
 
-  // Sort by total element impact descending so high-impact changes appear first
+  // Sort: changed first (highest impact), then added, then removed; within each group by element count
+  const kindOrder = { changed: 0, added: 1, removed: 2 };
   return changes
-    .sort((a, b) => (b.elementCountBefore + b.elementCountAfter) - (a.elementCountBefore + a.elementCountAfter))
+    .sort((a, b) => {
+      const ko = kindOrder[a.changeKind] - kindOrder[b.changeKind];
+      if (ko !== 0) return ko;
+      return (b.elementCountBefore + b.elementCountAfter) - (a.elementCountBefore + a.elementCountAfter);
+    })
     .slice(0, 60);
 }
 

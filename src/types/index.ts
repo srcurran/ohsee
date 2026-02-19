@@ -76,11 +76,14 @@ export interface CssPropertyChange {
 }
 
 /**
- * A CSS class whose computed visual properties changed between the two pages,
- * plus how many elements in each page use that class.
+ * A CSS class whose declared properties changed, were added, or were removed.
+ * 'changed' = class exists in both sites' CSS but with different property values.
+ * 'added'   = class exists only in site 2's CSS (new).
+ * 'removed' = class exists only in site 1's CSS (gone in site 2).
  */
 export interface CssClassChange {
   className: string;
+  changeKind: 'changed' | 'added' | 'removed';
   changedProperties: CssPropertyChange[];
   elementCountBefore: number;
   elementCountAfter: number;
